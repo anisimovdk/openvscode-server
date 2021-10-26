@@ -12,7 +12,6 @@ import { Schemas } from 'vs/base/common/network';
 import { isEqual } from 'vs/base/common/resources';
 import { URI, UriComponents } from 'vs/base/common/uri';
 import { request } from 'vs/base/parts/request/browser/request';
-import product from 'vs/platform/product/common/product';
 import { isFolderToOpen, isWorkspaceToOpen } from 'vs/platform/windows/common/windows';
 import { create, ICredentialsProvider, IURLCallbackProvider, IWorkbenchConstructionOptions, IWorkspace, IWorkspaceProvider } from 'vs/workbench/workbench.web.api';
 
@@ -27,30 +26,6 @@ class LocalStorageCredentialsProvider implements ICredentialsProvider {
 	private static readonly CREDENTIALS_STORAGE_KEY = 'credentials.provider';
 
 	private readonly authService: string | undefined;
-
-	constructor() {
-		let authSessionInfo: { readonly id: string, readonly accessToken: string, readonly providerId: string, readonly canSignOut?: boolean, readonly scopes: string[][] } | undefined;
-		const authSessionElement = document.getElementById('vscode-workbench-auth-session');
-		const authSessionElementAttribute = authSessionElement ? authSessionElement.getAttribute('data-settings') : undefined;
-		if (authSessionElementAttribute) {
-			try {
-				authSessionInfo = JSON.parse(authSessionElementAttribute);
-			} catch (error) { /* Invalid session is passed. Ignore. */ }
-		}
-
-		if (authSessionInfo) {
-			// Settings Sync Entry
-			this.setPassword(`${product.urlProtocol}.login`, 'account', JSON.stringify(authSessionInfo));
-
-			// Auth extension Entry
-			this.authService = `${product.urlProtocol}-${authSessionInfo.providerId}.login`;
-			this.setPassword(this.authService, 'account', JSON.stringify(authSessionInfo.scopes.map(scopes => ({
-				id: authSessionInfo!.id,
-				scopes,
-				accessToken: authSessionInfo!.accessToken
-			}))));
-		}
-	}
 
 	private _credentials: ICredential[] | undefined;
 	private get credentials(): ICredential[] {
@@ -490,8 +465,8 @@ function doCreateUri(path: string, queryValues: Map<string, string>): URI {
 	return URI.parse(window.location.href).with({ path, query });
 }
 
-(function () {
 
+(function () {
 	// Find config by checking for DOM
 	const configElement = document.getElementById('vscode-workbench-web-configuration');
 	const configElementAttribute = configElement ? configElement.getAttribute('data-settings') : undefined;
@@ -500,12 +475,15 @@ function doCreateUri(path: string, queryValues: Map<string, string>): URI {
 	}
 	const config: IWorkbenchConstructionOptions & { folderUri?: UriComponents, workspaceUri?: UriComponents } = JSON.parse(configElementAttribute);
 
+	const remoteAuthority = window.location.host;
+
 	// Create workbench
 	create(document.body, {
 		...config,
-		settingsSyncOptions: config.settingsSyncOptions ? {
-			enabled: config.settingsSyncOptions.enabled,
-		} : undefined,
+		remoteAuthority,
+		developmentOptions: {
+			...config.developmentOptions
+		},
 		workspaceProvider: WorkspaceProvider.create(config),
 		urlCallbackProvider: new LocalStorageURLCallbackProvider(),
 		credentialsProvider: config.remoteAuthority ? undefined : new LocalStorageCredentialsProvider() // with a remote, we don't use a local credentials provider
